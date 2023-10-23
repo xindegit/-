@@ -1,0 +1,235 @@
+一、开通服务器
+开通阿里云ECS服务器，系统选择centos系统，首次使用需要重置密码，因为是需要到分布式，故需要用到三台服务器。
+三台服务器开通过后，就配置好三台服务器的VPC和安全组。
+因为三台需要能够互通，在不同账号相同地域的情况下就需要创建对等链接
+步骤如下:
+专有网络➡VPC对等链接➡开通CD功能➡创建对等链接
+然后填写相关信息，注意填写接收端账号类型是跨账号，同地域。
+接着在接收端接收对等链接
+接收完之后，配置路由条目，发起端、接收端都要配置
+三台之间都需要完成这部操作
+值得一提的是，完成过后可以在自己电脑上记录好机器ip和密码等信息
+使用finalshell客户端服务器连接三台服务器
+使用 vi/etc/hosts根据实际情况填写自己的ip和主机名(内网ip)
+配置好之后 尝试互相ping一下，能通即是上面对等连接成功
+以及在本人电脑进入此路径C:\Windows\System32\drivers\etc\hosts
+修改hosts文件 根据实际情况填写自己的ip和主机名(外网ip)
+修改本地hosts文件可能会遇到权限问题，得使用管理员权限打开hosts文件
+
+
+二、hadoop集群搭建
+    在三台机器都要创建hadoop用户并设置密码
+    useradd hadoop  -----新建用户
+    passwd hadoop  -----设置密码
+三台台机器都要安装jdk
+  dnf install java-1.8.0-openjdk-devel.x86_64 –安装1.8版本的jdk
+  java -version –查看是否安装成功、查看版本号
+  三台机器都要安装hadoop
+  su – hadoop  切换为hadoop用户
+  wget stu.joytimes.info/download/hadoop-3.3.6.tar.gz 远程下载
+  tar zxvf hadoop-3.3.6.tar.gz  解压
+  修改配置文件  注意:除了特殊说明，以下操作都是hadoop用户操作
+  命令: vi $HADOOP_HOME/etc/hadoop/hadoop-env.sh
+  内容: 
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.312.b07-2.el8_5.x86_64
+export HADOOP_HOME=/home/hadoop/hadoop-3.3.6
+    命令: vi $HADOOP_HOME/etc/hadoop/core-site.xml
+    内容:
+<configuration>
+ <property>
+ <name>fs.defaultFS</name>
+ <value>hdfs://hadoop1:9000</value>
+ <description>文件系统服务地址,通常位于NameNode上</description>
+ </property>
+ <property>
+ <name>hadoop.tmp.dir</name>
+ <value>/home/hadoop/hadoopdata</value>
+ <description>相关文件临时根目录</description>
+ </property>
+</configuration>
+
+   命令: vi $HADOOP_HOME/etc/hadoop/hdfs-site.xml
+   内容:
+<configuration>
+ <property>
+ <name>dfs.namenode.name.dir</name>
+ <value>${hadoop.tmp.dir}/dfs/name</value>
+ <description>元数据存放目录</description>
+ </property>
+ <property>
+ <name>dfs.datanode.data.dir</name>
+ <value>${hadoop.tmp.dir}/dfs/data</value>
+ <description>数据块存储目录</description>
+ </property>
+<property>
+ <name>dfs.client.use.datanode.hostname</name>
+ <value>true</value>
+ <description>客户端使用dn的hostname连接dn</description>
+ </property>
+ <property>
+ <name>dfs.datanode.use.datanode.hostname</name>
+ <value>true</value>
+ <description>dn使用dn的hostname连接其他dn</description>
+ </property>
+</configuration>
+  创建hadoop.tmp.dir配置的目录:
+     mkdir -p /home/hadoop/hadoopdata
+  新增系统环境变量:
+  exit 退出hadoop用户，或者su – 切换至root用户
+  vi /etc/profile.d/hadoop.sh 在/etc/profile.d/目录内新建hadoop.sh文件
+  输入以下内容:
+export HADOOP_HOME=/home/hadoop/hadoop-3.3.6
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+注意:保存hadoop.sh后要执行以下命令使配置立即生效
+source /etc/profile.d/hadoop.sh
+再次把hadoop文件夹所有者设置为hadoop用户，防止前面配置时误把相关文件改了所有者 得切换至root用户给予权限
+命令: chown -R hadoop:hadoop /home/hadoop
+配置好之后 就可以启动HDFS测试，首次启动需要格式化
+先切换至hadoop用户  su – hadoop
+格式化命令: hadoop namenode -format
+启动命令: hdfs --daemon start  后面添加需要启动的服务
+关闭命令: hdfs --daemon stop   后面添加需要关闭的服务
+jps命令可以查看启动情况
+最后可以通过WebUI查看各服务启动情况
+Namenode状态查看: 主机名:9870
+Datanode状态查看：主机名:9864
+
+  
+三、yarn部署
+修改配置文件:
+命令: vi $HADOOP_HOME/etc/hadoop/yarn-site.xml
+内容:
+<configuration>
+ <property>
+ <name>yarn.resourcemanager.hostname</name>
+ <value>hadoop2</value>
+ <description>ResourceManager节点位置，web端口为8088</description>
+ </property>
+ <property>
+ <name>yarn.nodemanager.aux-services</name>
+ <value>mapreduce_shuffle</value>
+ </property>
+ <property>
+ <name>yarn.log-aggregation-enable</name>
+ <value>true</value>
+ <description>开启日志聚合</description>
+ </property>
+ <property>
+ <name>yarn.resourcemanager.scheduler.class</name>
+<value>org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler</value>
+<description>采用公平调度策略</description>
+ </property>
+</configuration>
+
+命令: vi $HADOOP_HOME/etc/hadoop/mapred-site.xml
+内容:
+<configuration>
+ <property>
+ <name>mapreduce.framework.name</name>
+ <value>yarn</value>
+ </property>
+ <property>
+ <name>mapreduce.jobhistory.address</name>
+ <value>hadoop2:10020</value>
+ <description>历史服务器服务地址</description>
+ </property>
+ <property>
+ <name>mapreduce.jobhistory.webapp.address</name>
+ <value>hadoop2:19888</value>
+ <description>历史服务器WEBUI访问地址</description>
+ </property>
+ <property>
+ <name>yarn.app.mapreduce.am.env</name>
+ <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+ <description>mr主进程环境变量</description>
+ </property>
+ <property>
+ <name>mapreduce.map.env</name>
+ <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+ <description>mr map进程环境变量</description>
+ </property>
+ <property>
+ <name>mapreduce.reduce.env</name>
+ <value>HADOOP_MAPRED_HOME=$HADOOP_HOME</value>
+ <description>mr reduce进程环境变量</description>
+ </property>
+</configuration>
+另外两台需要完成相同配置
+yarn相关服务启动测试
+启动命令: yarn --daemon start 后面添加需要启动的服务
+关闭命令: yarn --daemon stop  后面添加需要关闭的服务
+历史服务器的启动和关闭
+启动命令: mapred --daemon start historyserver
+关闭命令: mapred --daemon stop historyserver
+查看webui界面
+resourcemanager监控: 主机名:8088
+行历史记录查看:主机名:19888
+
+  
+四、hive部署
+在阿里云开通云数据库
+地域和可用区选择和云服务器相同的
+创建账号➡创建数据库➡获取数据库连接地址➡设置白名单和安全组
+新增系统环境变量: vi /etc/profile.d/hive.sh
+内容: export PATH=$PATH:/home/hadoop/apache-hive-3.1.3-bin/bin
+下载mysql驱动和hive安装包
+切换至hadoop用户: su – hadoop
+进入hadoop路径: cd /home/hadoop
+下载: wget https://dlcdn.apache.org/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
+解压: tar -zxvf apache-hive-3.1.3-bin.tar.gz -C /home/hadoop/
+上传mysql驱动并放到hive安装文件夹的lib目录内:
+scp ./mysql-connector-j-8.0.31.jar hadoop@hadoop3:/home/hadoop/apache-hive-3.1.3- bin/lib/
+注意: 解压后的mysql- connector-j-8.0.31.jar才是驱动
+完成相关配置: vi /home/hadoop/apache-hive-3.1.3-bin/conf/hive-env.sh
+内容:
+export HADOOP_HOME=/home/hadoop/hadoop-3.3.6
+export HIVE_CONF_DIR=/home/hadoop/apache-hive-3.1.3-bin/conf
+export HIVE_AUX_JARS_PATH=/home/hadoop/apache-hive-3.1.3-bin/lib
+
+命令: vi /home/hadoop/apache-hive-3.1.3-bin/conf/hive-site.xml
+内容:
+<configuration>
+ <property>
+ <name>javax.jdo.option.ConnectionURL</name>
+ <value>jdbc:mysql://rm-cn-9lb3eeptj00105.rwlb.rds.aliyuncs.com/hive?
+createDatabaseIfNotExist=true&amp;useSSL=false&amp;useUnicode=true&amp;characterEn
+coding=UTF-8</value>
+ <!-- mysql数据库连接地址，把域名部分替换成自己的 -->
+ </property>
+ <property>
+ <name>javax.jdo.option.ConnectionDriverName</name>
+ <!--<value>com.mysql.jdbc.Driver</value>-->
+ <value>com.mysql.cj.jdbc.Driver</value>
+ <!-- mysql jdbc驱动包位置 -->
+ </property>
+ <property>
+ <name>javax.jdo.option.ConnectionUserName</name>
+ <value>root</value>
+ <!-- 数据库用户名 -->
+ </property>
+ <property>
+ <name>javax.jdo.option.ConnectionPassword</name>
+ <value>my1S2q3l_root</value>
+ <!-- 数据库密码，需替换成自己的 -->
+ </property>
+ <property>
+ <name>hive.server2.thrift.bind.host</name>
+ <value>hadoop3</value>
+ <!-- ThriftServer2所在主机名 -->
+ </property>
+ <property>
+<name>hive.metastore.uris</name>
+ <value>thrift://hadoop3:9083</value>
+ <!-- 元数据服务地址 -->
+ </property>
+ <property>
+ <name>hive.metastore.event.db.notification.api.auth</name>
+ <value>false</value>
+ </property>
+</configuration>
+创建日志目录:
+在hadoop用户下: mkdir /home/hadoop/apache-hive-3.1.3-bin/logs
+初始化元数据库: schematool -initSchema -dbType mysql -verbos
+启动元数据库管理服务:
+nohup hive --service metastore >> /home/hadoop/apache-hive-3.1.3- bin/logs/metastore.log 2>&1 &
+启动hive shell: hive
