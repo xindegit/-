@@ -1,0 +1,69 @@
+下载以及安装
+    # 切换至hadoop用户操作
+su - hadoop
+wget https://datax-opensource.oss-cn-hangzhou.aliyuncs.com/202308/datax.tar.gz
+tar -zxvf datax.tar.gz
+# 初体验（自检脚本）
+cd datax/bin  
+ datax.py ../job/job.json
+
+查看hdfs转mysql作业的配置文件模板
+
+```python datax.py -r hdfsreader -w mysqlwriter```
+
+
+以上命令会输出一个配置模板，基于以上模板修改关键参数
+
+vi ../job/gitee_hdfs_to_mysql.json
+    `注意：以下参数要根据实际情况更换`
+
+- fieldDelimiter分隔符
+- path hdfs上表路径
+- 数据库连接地址、表名、字段名、用户名、密码等
+    {
+    "job": {
+        "content": [
+            {
+                "reader": {
+                    "name": "hdfsreader",
+                    "parameter": {
+                        "column": ["*"],
+                        "defaultFS": "hdfs://hadoop1:9000",
+                        "encoding": "UTF-8",
+                        "fieldDelimiter": "\u0001",
+                        "fileType": "text",
+                        "path": "/user/hive/warehouse/gitee.db/lan_top10/000000_0"
+                    }
+                },
+                "writer": {
+                    "name": "mysqlwriter",
+                    "parameter": {
+                        "column": ["language", "num"],
+                        "connection": [
+                            {
+                                "jdbcUrl": "jdbc:mysql://换成自己的MySql域名/换成自己的数据库名?createDatabaseIfNotExist=true&amp;useSSL=false&amp;useUnicode=true&amp;characterEncoding=UTF-8",
+                                "table": ["lan_top10"]
+                            }
+                        ],
+                        "password": "密码",
+                        "preSql": [],
+                        "session": [],
+                        "username": "用户名",
+                        "writeMode": "insert"
+                    }
+                }
+            }
+        ],
+        "setting": {
+            "speed": {
+                "channel": "1"
+            }
+        }
+    }
+}
+
+
+在mysql中新建一个与hive导入表相同结构的表
+
+启动作业
+    python datax.py ../job/gitee_hdfs_to_mysql.json
